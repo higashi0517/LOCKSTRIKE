@@ -43,10 +43,15 @@ public:
 private:
 	MissionState mission_;
 	std::unique_ptr<GameUi> gameUi_;
+	std::unique_ptr<Sprite> startEffectSprite_;
 	bool showDebug_ = false;
 	int shotCooldown_ = 0;
 	int uiFrames_ = 0;
+	static constexpr int kCountdownFrames = 3 * 60;
+	static constexpr int kStartBannerFrames = 36;
+	int startFrames_ = 0;
 	void StartMission();
+	void DrawStartEffect();
 	void DrawGameUi();
 	std::unique_ptr<Input> input_ = nullptr;
 

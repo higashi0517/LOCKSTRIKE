@@ -122,6 +122,14 @@ void GamePlayScene::Initialize(WinApp* winApp, GraphicsDevice* graphicsDevice)
 		"Resources/circle2.png");
 	gameUi_ = std::make_unique<GameUi>();
 	gameUi_->Initialize(spriteManager_.get());
+	// タイトルに合わせた白文字画像。左上3、右上2、左下1、右下START。
+	const char* startTexture = "Resources/UI/start-countdown.png";
+	TextureManager::GetInstance()->LoadTexture(startTexture);
+	startEffectSprite_ = std::make_unique<Sprite>();
+	startEffectSprite_->Initialize(spriteManager_.get(), startTexture);
+	startEffectSprite_->SetMonochromeMask(true);
+	startEffectSprite_->SetAnchorPoint({0.5f, 0.5f});
+	startEffectSprite_->SetPosition({640.0f, 360.0f});
 
 	for (uint32_t i = 0; i < 5; ++i) {
 		auto sprite = std::make_unique<Sprite>();
@@ -233,6 +241,15 @@ void GamePlayScene::Update() {
 		SceneManager::GetInstance()->ChangeScene("TITLE");
 		return;
 	}
+	// スタート演出が終わるまでゲーム進行を止め、終了後はタイトルへ戻る。
+	if (startFrames_ <= kCountdownFrames + kStartBannerFrames) {
+		if (startFrames_ < kCountdownFrames + kStartBannerFrames) { ++startFrames_; }
+		if (startFrames_ >= kCountdownFrames + kStartBannerFrames) {
+			SceneManager::GetInstance()->ChangeScene("TITLE");
+		}
+		return;
+	}
+
 	mission_.Tick();
 	if (shotCooldown_ > 0) { --shotCooldown_; }
 	if (showDebug_ && input_->TriggerKey(DIK_R)) {
@@ -565,12 +582,14 @@ void GamePlayScene::Draw() {
 	for (auto& bullet : enemyBullets_) {
 		bullet->Draw();
 	}
-	reticle3D_->Draw();
+	if (startFrames_ >= kCountdownFrames) { reticle3D_->Draw(); }
 	DrawGameUi();
+	DrawStartEffect();
 
 }
 
 void GamePlayScene::Finalize() {
+	startEffectSprite_.reset();
 	gameUi_.reset();
 
 	input_.reset();
@@ -597,6 +616,8 @@ void GamePlayScene::StartMission()
 {
 	// このシーンに入場した時点で、新しいミッションを開始する。
 	mission_.Start();
+	startFrames_ = 0;
+	uiFrames_ = 0;
 	playerBullets_.clear();
 	enemyBullets_.clear();
 	lockOnTarget_ = nullptr;
@@ -667,6 +688,40 @@ void GamePlayScene::DrawGameUi()
 	}
 
 }
+
+void GamePlayScene::DrawStartEffect()
+{
+	if (startFrames_ >= kCountdownFrames + kStartBannerFrames) { return; }
+	// DrawGameUiと同じ描画プールを使うため、ここではBeginを呼ばない。
+	const bool counting = startFrames_ < kCountdownFrames;
+	const float release = counting ? 0.0f : std::clamp(
+		float(startFrames_ - kCountdownFrames) / float(kStartBannerFrames), 0.0f, 1.0f);
+	const float alpha = 1.0f - release;
+	const float beat = float(startFrames_ % 60) / 60.0f;
+	const float pop = counting ? 1.0f + 0.45f * (1.0f - beat) * (1.0f - beat) : 1.0f + release * 0.3f;
+	const Vector4 cyan{0.2f, 0.9f, 0.9f, alpha};
+	const Vector4 white{0.92f, 0.96f, 1.0f, alpha};
+	gameUi_->Rect(0, 0, 1280, 720, {0.01f, 0.025f, 0.06f, 0.28f * alpha});
+	gameUi_->CenteredText(counting ? "MISSION 01 / GET READY" : "MISSION START", 226, 2, cyan);
+	const int cell = counting ? startFrames_ / 60 : 3;
+	const auto& metadata = TextureManager::GetInstance()->GetMetaData("Resources/UI/start-countdown.png");
+	const Vector2 cellSize{float(metadata.width) * 0.5f, float(metadata.height) * 0.5f};
+	startEffectSprite_->SetTextureLeftTop({float(cell % 2) * cellSize.x, float(cell / 2) * cellSize.y});
+	startEffectSprite_->SetTextureSize(cellSize);
+	const float imageSize = (counting ? 320.0f : 512.0f) * pop;
+	startEffectSprite_->SetSize({imageSize, imageSize});
+	startEffectSprite_->SetColor({1.0f, 1.0f, 1.0f, alpha});
+	startEffectSprite_->Update();
+	startEffectSprite_->Draw();
+	gameUi_->CenteredText("DESTROY ALL 5 TARGETS", 458, 1.8f, white);
+	// 1秒ごとに点灯する準備ランプ。
+	for (int i = 0; i < 3; ++i) {
+		const bool lit = !counting || startFrames_ / 60 >= i;
+		gameUi_->Rect(568.0f + float(i) * 52.0f, 514, 40, 5,
+			lit ? cyan : Vector4{0.15f, 0.2f, 0.25f, alpha});
+	}
+}
+
 void GamePlayScene::UpdateFollowCamera()
 {
 	const Vector3 playerPosition = player_->GetTranslate();

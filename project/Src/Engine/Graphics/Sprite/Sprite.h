@@ -98,6 +98,8 @@ public:
 	void SetPosition(const Vector2& pos) { this->position = pos; }                       // 位置
 	void SetRotation(float rot) { this->rotation = rot; }                                // 回転
 	void SetColor(const Vector4& color) { this->materialData->color = color; }           // 色
+	// 白文字・黒背景の画像を、明るさを透明度とするマスクとして描く。
+	void SetMonochromeMask(bool enabled) { materialData->enableLighting = enabled ? -1 : 0; }
 	void SetSize(const Vector2& size) { this->size = size; }                             // サイズ
 	void SetAnchorPoint(const Vector2& anchorPoint) { this->anchorPoint = anchorPoint; } // アンカーポイント
 	void SetIsFlipX(bool isFlipX) { this->isFlipX_ = isFlipX; }                          // 左右フリップ
