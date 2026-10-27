@@ -96,7 +96,6 @@ void TitleScene::UpdateAnimation()
 	if (titleLaunching_) {
 		// 出撃アニメーションの後、SceneManagerの共通フェードへ進む。
 		if (titleLaunchFrames_ >= kTitleLaunchFrames) {
-			// 遷移演出の確認用。通常動作に戻すときは "GAMEPLAY" に変更する。
 			SceneManager::GetInstance()->ChangeScene("GAMEPLAY");
 			return;
 		}

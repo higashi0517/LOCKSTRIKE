@@ -130,6 +130,22 @@ void GamePlayScene::Initialize(WinApp* winApp, GraphicsDevice* graphicsDevice)
 	startEffectSprite_->SetMonochromeMask(true);
 	startEffectSprite_->SetAnchorPoint({0.5f, 0.5f});
 	startEffectSprite_->SetPosition({640.0f, 360.0f});
+	const char* startLabels = "Resources/UI/start-labels.png";
+	TextureManager::GetInstance()->LoadTexture(startLabels);
+	for (auto* sprite : { &startHeadingSprite_, &startObjectiveSprite_ }) {
+		*sprite = std::make_unique<Sprite>();
+		(*sprite)->Initialize(spriteManager_.get(), startLabels);
+		(*sprite)->SetMonochromeMask(true);
+		(*sprite)->SetAnchorPoint({0.5f, 0.5f});
+	}
+	const char* gameOverTexture = "Resources/UI/game-over-effect.png";
+	TextureManager::GetInstance()->LoadTexture(gameOverTexture);
+	for (auto* sprite : { &gameOverTitleSprite_, &gameOverReasonSprite_ }) {
+		*sprite = std::make_unique<Sprite>();
+		(*sprite)->Initialize(spriteManager_.get(), gameOverTexture);
+		(*sprite)->SetMonochromeMask(true);
+		(*sprite)->SetAnchorPoint({0.5f, 0.5f});
+	}
 
 	for (uint32_t i = 0; i < 5; ++i) {
 		auto sprite = std::make_unique<Sprite>();
@@ -230,6 +246,17 @@ void GamePlayScene::Initialize(WinApp* winApp, GraphicsDevice* graphicsDevice)
 	hr = graphicsDevice_->GetDevice()->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&copyPipelineState_));
 	assert(SUCCEEDED(hr));
 	StartMission();
+	if (previewGameOver_) {
+		// タイトルから墜落演出を確認する専用入口。通常の再挑戦には適用しない。
+		startFrames_ = kCountdownFrames + kStartBannerFrames;
+		while (mission_.GetHealth() > 0) {
+			if (mission_.IsInvincible()) { mission_.Tick(); }
+			else { mission_.Damage(); }
+		}
+		mission_.Resolve();
+		crashStartPosition_ = player_->GetTranslate();
+		crashStartRotation_ = player_->GetRotate();
+	}
 }
 
 void GamePlayScene::Update() {
@@ -241,12 +268,18 @@ void GamePlayScene::Update() {
 		SceneManager::GetInstance()->ChangeScene("TITLE");
 		return;
 	}
-	// スタート演出が終わるまでゲーム進行を止め、終了後はタイトルへ戻る。
-	if (startFrames_ <= kCountdownFrames + kStartBannerFrames) {
-		if (startFrames_ < kCountdownFrames + kStartBannerFrames) { ++startFrames_; }
-		if (startFrames_ >= kCountdownFrames + kStartBannerFrames) {
-			SceneManager::GetInstance()->ChangeScene("TITLE");
+	// 敵・弾・タイマーとカメラを止め、自機だけを墜落させる。
+	if (mission_.GetPhase() == MissionState::Phase::GameOver) {
+		++gameOverFrames_;
+		UpdateCrashEffect();
+		if (gameOverFrames_ >= kGameOverEffectFrames) {
+			SceneManager::GetInstance()->ChangeScene(std::make_unique<GameOverScene>(mission_));
 		}
+		return;
+	}
+	// スタート演出の次のフレームから通常プレイを開始する。
+	if (startFrames_ < kCountdownFrames + kStartBannerFrames) {
+		++startFrames_;
 		return;
 	}
 
@@ -424,7 +457,11 @@ void GamePlayScene::Update() {
 		return;
 	}
 	if (mission_.GetPhase() == MissionState::Phase::GameOver) {
-		SceneManager::GetInstance()->ChangeScene(std::make_unique<GameOverScene>(mission_));
+		gameOverFrames_ = 0;
+		crashStartPosition_ = player_->GetTranslate();
+		crashStartRotation_ = player_->GetRotate();
+		player_->ResetMovementTilt();
+		player_->UpdateTransform();
 		return;
 	}
 
@@ -486,7 +523,7 @@ void GamePlayScene::Draw() {
 
 	// === 3Dオブジェクト描画 ===
 	object3DManager_->SetCommonRenderState();
-	if (!mission_.IsInvincible() || (uiFrames_ / 5) % 2 == 0) {
+	if (mission_.GetPhase() == MissionState::Phase::GameOver || !mission_.IsInvincible() || (uiFrames_ / 5) % 2 == 0) {
 		player_->Draw(skinCluster_);
 	}
 	enemySpawnController_->Draw(skinCluster_);
@@ -582,13 +619,19 @@ void GamePlayScene::Draw() {
 	for (auto& bullet : enemyBullets_) {
 		bullet->Draw();
 	}
-	if (startFrames_ >= kCountdownFrames) { reticle3D_->Draw(); }
+	if (startFrames_ >= kCountdownFrames + kStartBannerFrames &&
+		mission_.GetPhase() == MissionState::Phase::Playing) { reticle3D_->Draw(); }
 	DrawGameUi();
 	DrawStartEffect();
+	DrawGameOverEffect();
 
 }
 
 void GamePlayScene::Finalize() {
+	startHeadingSprite_.reset();
+	startObjectiveSprite_.reset();
+	gameOverTitleSprite_.reset();
+	gameOverReasonSprite_.reset();
 	startEffectSprite_.reset();
 	gameUi_.reset();
 
@@ -608,7 +651,7 @@ void GamePlayScene::Finalize() {
 	spriteManager_.reset();
 }
 
-GamePlayScene::GamePlayScene() {}
+GamePlayScene::GamePlayScene(bool previewGameOver) : previewGameOver_(previewGameOver) {}
 
 GamePlayScene::~GamePlayScene() {}
 
@@ -617,6 +660,7 @@ void GamePlayScene::StartMission()
 	// このシーンに入場した時点で、新しいミッションを開始する。
 	mission_.Start();
 	startFrames_ = 0;
+	gameOverFrames_ = 0;
 	uiFrames_ = 0;
 	playerBullets_.clear();
 	enemyBullets_.clear();
@@ -649,7 +693,8 @@ void GamePlayScene::DrawGameUi()
 	const Vector4 cyan{ 0.2f, 0.9f, 0.9f, 1.0f };
 	const Vector4 panel{ 0.025f, 0.045f, 0.08f, 0.94f };
 	gameUi_->Begin();
-	if (mission_.GetPhase() == MissionState::Phase::Playing) {
+	if (mission_.GetPhase() == MissionState::Phase::Playing &&
+		startFrames_ >= kCountdownFrames + kStartBannerFrames) {
 		// 未ロックの敵にも目印を出し、空の背景に埋もれないようにする。
 		const auto& vp = camera_->GetViewProjectionMatrix();
 		for (const auto& enemy : enemySpawnController_->GetEnemies()) {
@@ -700,9 +745,17 @@ void GamePlayScene::DrawStartEffect()
 	const float beat = float(startFrames_ % 60) / 60.0f;
 	const float pop = counting ? 1.0f + 0.45f * (1.0f - beat) * (1.0f - beat) : 1.0f + release * 0.3f;
 	const Vector4 cyan{0.2f, 0.9f, 0.9f, alpha};
-	const Vector4 white{0.92f, 0.96f, 1.0f, alpha};
 	gameUi_->Rect(0, 0, 1280, 720, {0.01f, 0.025f, 0.06f, 0.28f * alpha});
-	gameUi_->CenteredText(counting ? "MISSION 01 / GET READY" : "MISSION START", 226, 2, cyan);
+	const auto& labels = TextureManager::GetInstance()->GetMetaData("Resources/UI/start-labels.png");
+	const float labelWidth = float(labels.width);
+	const float labelHeight = float(labels.height);
+	startHeadingSprite_->SetTextureLeftTop({0.0f, labelHeight * (counting ? 0.1f : 0.3875f)});
+	startHeadingSprite_->SetTextureSize({labelWidth, labelHeight * 0.2f});
+	startHeadingSprite_->SetPosition({640.0f, 244.0f});
+	startHeadingSprite_->SetSize({counting ? 480.0f : 360.0f, counting ? 96.0f : 72.0f});
+	startHeadingSprite_->SetColor({1.0f, 1.0f, 1.0f, alpha});
+	startHeadingSprite_->Update();
+	startHeadingSprite_->Draw();
 	const int cell = counting ? startFrames_ / 60 : 3;
 	const auto& metadata = TextureManager::GetInstance()->GetMetaData("Resources/UI/start-countdown.png");
 	const Vector2 cellSize{float(metadata.width) * 0.5f, float(metadata.height) * 0.5f};
@@ -713,13 +766,80 @@ void GamePlayScene::DrawStartEffect()
 	startEffectSprite_->SetColor({1.0f, 1.0f, 1.0f, alpha});
 	startEffectSprite_->Update();
 	startEffectSprite_->Draw();
-	gameUi_->CenteredText("DESTROY ALL 5 TARGETS", 458, 1.8f, white);
+	startObjectiveSprite_->SetTextureLeftTop({0.0f, labelHeight * 0.6875f});
+	startObjectiveSprite_->SetTextureSize({labelWidth, labelHeight * 0.2f});
+	startObjectiveSprite_->SetPosition({640.0f, 474.0f});
+	startObjectiveSprite_->SetSize({420.0f, 84.0f});
+	startObjectiveSprite_->SetColor({1.0f, 1.0f, 1.0f, alpha});
+	startObjectiveSprite_->Update();
+	startObjectiveSprite_->Draw();
 	// 1秒ごとに点灯する準備ランプ。
 	for (int i = 0; i < 3; ++i) {
 		const bool lit = !counting || startFrames_ / 60 >= i;
 		gameUi_->Rect(568.0f + float(i) * 52.0f, 514, 40, 5,
 			lit ? cyan : Vector4{0.15f, 0.2f, 0.25f, alpha});
 	}
+}
+
+void GamePlayScene::UpdateCrashEffect()
+{
+	// 最初の衝撃の後、失速して機首を下げながら重力で加速する。
+	// カメラは追従させず、機体が画面下に消えるまで見送る。
+	const float frame = float(gameOverFrames_);
+	const float fall = std::clamp(frame - 10.0f, 0.0f, float(kGameOverEffectFrames));
+	const float tilt = std::clamp(fall / 75.0f, 0.0f, 1.0f);
+	const float eased = tilt * tilt * (3.0f - 2.0f * tilt);
+	const float forward = 0.025f * fall;
+	const float sideways = 0.008f * fall;
+	const float yaw = crashStartRotation_.y;
+	player_->SetTranslate({
+		crashStartPosition_.x + std::sin(yaw) * forward + std::cos(yaw) * sideways,
+		crashStartPosition_.y - 0.0008f * fall * fall,
+		crashStartPosition_.z + std::cos(yaw) * forward - std::sin(yaw) * sideways
+	});
+	player_->SetRotate({
+		crashStartRotation_.x + 0.95f * eased,
+		crashStartRotation_.y + 0.2f * eased,
+		crashStartRotation_.z - 1.35f * eased + std::sin(frame * 0.25f) * 0.06f * (1.0f - tilt)
+	});
+	player_->UpdateTransform();
+}
+
+void GamePlayScene::DrawGameOverEffect()
+{
+	if (mission_.GetPhase() != MissionState::Phase::GameOver) { return; }
+	// DrawGameUiが開始したプールを継続して使う。
+	const float frame = float(gameOverFrames_);
+	const float flash = std::clamp(1.0f - frame / 18.0f, 0.0f, 1.0f);
+	const float dark = std::clamp((frame - 70.0f) / 65.0f, 0.0f, 1.0f);
+	gameUi_->Rect(0, 0, 1280, 720, {0.9f, 0.06f, 0.025f, flash * 0.65f});
+	gameUi_->Rect(0, 0, 1280, 720, {0.015f, 0.005f, 0.02f, dark * 0.85f});
+	const float shutter = std::clamp(frame / 40.0f, 0.0f, 1.0f) * 112.0f;
+	gameUi_->Rect(0, 0, 1280, shutter, {0, 0, 0, 1});
+	gameUi_->Rect(0, 720 - shutter, 1280, shutter, {0, 0, 0, 1});
+	const float alpha = std::clamp((frame - 75.0f) / 25.0f, 0.0f, 1.0f);
+	const float pop = 1.0f + 0.27f * (1.0f - alpha);
+	const float lineWidth = 520.0f * alpha;
+	gameUi_->Rect(640 - lineWidth * 0.5f, 310, lineWidth, 2, {1.0f, 0.2f, 0.12f, alpha});
+	// 生成画像の各行を切り出す。黒背景は開始演出と同じマスクで透過する。
+	const auto& metadata = TextureManager::GetInstance()->GetMetaData("Resources/UI/game-over-effect.png");
+	const float textureWidth = float(metadata.width);
+	const float textureHeight = float(metadata.height);
+	gameOverTitleSprite_->SetTextureLeftTop({0.0f, textureHeight * 0.1f});
+	gameOverTitleSprite_->SetTextureSize({textureWidth, textureHeight * 0.2f});
+	gameOverTitleSprite_->SetPosition({640.0f, 367.0f});
+	gameOverTitleSprite_->SetSize({680.0f * pop, 136.0f * pop});
+	gameOverTitleSprite_->SetColor({1.0f, 1.0f, 1.0f, alpha});
+	gameOverTitleSprite_->Update();
+	gameOverTitleSprite_->Draw();
+	const bool signalLost = mission_.GetHealth() == 0;
+	gameOverReasonSprite_->SetTextureLeftTop({0.0f, textureHeight * (signalLost ? 0.425f : 0.7f)});
+	gameOverReasonSprite_->SetTextureSize({textureWidth, textureHeight * 0.2f});
+	gameOverReasonSprite_->SetPosition({640.0f, 429.0f});
+	gameOverReasonSprite_->SetSize({signalLost ? 340.0f : 460.0f, signalLost ? 68.0f : 92.0f});
+	gameOverReasonSprite_->SetColor({0.92f, 0.96f, 1.0f, alpha});
+	gameOverReasonSprite_->Update();
+	gameOverReasonSprite_->Draw();
 }
 
 void GamePlayScene::UpdateFollowCamera()

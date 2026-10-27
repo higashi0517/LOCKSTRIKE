@@ -32,7 +32,7 @@ class RenderTexture;
 class GamePlayScene : public BaseScene
 {
 public:
-	GamePlayScene();
+	explicit GamePlayScene(bool previewGameOver = false);
 	~GamePlayScene() override;
 
 	void Initialize(WinApp* winApp, GraphicsDevice* graphicsDevice)override;
@@ -42,14 +42,25 @@ public:
 
 private:
 	MissionState mission_;
+	bool previewGameOver_ = false;
 	std::unique_ptr<GameUi> gameUi_;
 	std::unique_ptr<Sprite> startEffectSprite_;
+	std::unique_ptr<Sprite> startHeadingSprite_;
+	std::unique_ptr<Sprite> startObjectiveSprite_;
+	std::unique_ptr<Sprite> gameOverTitleSprite_;
+	std::unique_ptr<Sprite> gameOverReasonSprite_;
 	bool showDebug_ = false;
 	int shotCooldown_ = 0;
 	int uiFrames_ = 0;
 	static constexpr int kCountdownFrames = 3 * 60;
 	static constexpr int kStartBannerFrames = 36;
 	int startFrames_ = 0;
+	static constexpr int kGameOverEffectFrames = 150;
+	int gameOverFrames_ = 0;
+	Vector3 crashStartPosition_{};
+	Vector3 crashStartRotation_{};
+	void UpdateCrashEffect();
+	void DrawGameOverEffect();
 	void StartMission();
 	void DrawStartEffect();
 	void DrawGameUi();
