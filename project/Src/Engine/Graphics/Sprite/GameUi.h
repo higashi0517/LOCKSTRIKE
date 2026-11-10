@@ -2,6 +2,7 @@
 #include "Sprite.h"
 #include "SpriteManager.h"
 #include "TextureManager.h"
+#include <cmath>
 #include <memory>
 #include <string_view>
 #include <vector>
@@ -16,13 +17,12 @@ public:
 	}
 	void Begin() { solidIndex_ = 0; glyphIndex_ = 0; }
 	void Rect(float x, float y, float width, float height, const Vector4& color) {
-		Sprite& sprite = Next(solids_, solidIndex_, "Resources/white1x1.png");
-		sprite.SetTextureSize({ 1.0f, 1.0f });
-		sprite.SetPosition({ x, y });
-		sprite.SetSize({ width, height });
-		sprite.SetColor(color);
-		sprite.Update();
-		sprite.Draw();
+		DrawSolid({x, y}, {width, height}, {}, 0.0f, color);
+	}
+	void Line(const Vector2& start, const Vector2& end, float thickness, const Vector4& color) {
+		const float dx = end.x - start.x;
+		const float dy = end.y - start.y;
+		DrawSolid(start, {std::hypot(dx, dy), thickness}, {0.0f, 0.5f}, std::atan2(dy, dx), color);
 	}
 	void Text(std::string_view text, float x, float y, float scale, const Vector4& color) {
 		for (const unsigned char ch : text) {
@@ -44,6 +44,17 @@ public:
 		Text(text, (1280.0f - float(text.size()) * 9.0f * scale) * 0.5f, y, scale, color);
 	}
 private:
+	void DrawSolid(const Vector2& position, const Vector2& size, const Vector2& anchor, float rotation, const Vector4& color) {
+		Sprite& sprite = Next(solids_, solidIndex_, "Resources/white1x1.png");
+		sprite.SetTextureSize({1.0f, 1.0f});
+		sprite.SetPosition(position);
+		sprite.SetSize(size);
+		sprite.SetAnchorPoint(anchor);
+		sprite.SetRotation(rotation);
+		sprite.SetColor(color);
+		sprite.Update();
+		sprite.Draw();
+	}
 	Sprite& Next(std::vector<std::unique_ptr<Sprite>>& pool, size_t& index, const char* texture) {
 		if (index == pool.size()) {
 			auto sprite = std::make_unique<Sprite>();

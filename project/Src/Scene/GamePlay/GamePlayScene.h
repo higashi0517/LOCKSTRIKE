@@ -8,6 +8,7 @@
 #include "SpriteManager.h"
 #include "Camera.h"
 #include "RailCamera.h"
+#include <array>
 #include <vector>
 #include <memory>
 #include <cstdint>
@@ -23,6 +24,7 @@
 #include "HomingProjectile.h"
 #include "Reticle3D.h"
 #include "GameUi.h"
+#include "Collider.h"
 #include "MissionState.h"
 
 class WinApp;
@@ -51,6 +53,16 @@ private:
 	std::unique_ptr<Sprite> gameOverReasonSprite_;
 	bool showDebug_ = false;
 	int shotCooldown_ = 0;
+	static constexpr int kMuzzleFlashFrames = 6;
+	static constexpr int kImpactFrames = 24;
+	static constexpr int kDefeatMessageFrames = 42;
+	struct CombatImpact {
+		Vector3 position;
+		int frame;
+	};
+	Vector3 muzzleFlashPosition_{};
+	int muzzleFlashFrame_ = -kMuzzleFlashFrames;
+	std::vector<CombatImpact> combatImpacts_;
 	int uiFrames_ = 0;
 	static constexpr int kCountdownFrames = 3 * 60;
 	static constexpr int kStartBannerFrames = 36;
@@ -64,6 +76,7 @@ private:
 	void StartMission();
 	void DrawStartEffect();
 	void DrawGameUi();
+	void DrawCombatFeedback();
 	std::unique_ptr<Input> input_ = nullptr;
 
 	std::unique_ptr<Object3DManager> object3DManager_ = nullptr;
@@ -75,6 +88,13 @@ private:
 	std::unique_ptr<RailCamera> railCamera_;
 	Vector2 railPlayerOffset_ = { 0.0f, 0.0f };
 	std::unique_ptr<Skydome> skydome_;
+	std::vector<std::unique_ptr<Object3D>> scenery_;
+	std::vector<Collider> sceneryColliders_;
+	std::array<std::unique_ptr<Sprite>, 24> windStreaks_;
+	float windTime_ = 0.0f;
+	void InitializeScenery();
+	void InitializeWind();
+	void UpdateWind();
 	std::vector<std::unique_ptr<Projectile>> playerBullets_;
 	std::vector<std::unique_ptr<Projectile>> enemyBullets_;
 	std::unique_ptr<Reticle3D> reticle3D_;

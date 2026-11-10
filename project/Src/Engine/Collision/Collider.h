@@ -13,6 +13,7 @@ namespace CollisionLayer {
 	constexpr uint32_t Enemy = 1u << 1;
 	constexpr uint32_t PlayerBullet = 1u << 2;
 	constexpr uint32_t EnemyBullet = 1u << 3;
+	constexpr uint32_t Scenery = 1u << 4;
 }
 
 class Collider

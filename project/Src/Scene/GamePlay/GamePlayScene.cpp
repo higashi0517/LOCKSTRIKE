@@ -8,6 +8,21 @@
 #include <cassert>
 #include <cmath>
 
+namespace
+{
+	bool ProjectToScreen(const Matrix4x4& vp, const Vector3& position, Vector2& screen)
+	{
+		const float w = position.x * vp.m[0][3] + position.y * vp.m[1][3] + position.z * vp.m[2][3] + vp.m[3][3];
+		if (w <= 0.0f) { return false; }
+		const float z = (position.x * vp.m[0][2] + position.y * vp.m[1][2] + position.z * vp.m[2][2] + vp.m[3][2]) / w;
+		if (z < 0.0f || z > 1.0f) { return false; }
+		const float x = (position.x * vp.m[0][0] + position.y * vp.m[1][0] + position.z * vp.m[2][0] + vp.m[3][0]) / w;
+		const float y = (position.x * vp.m[0][1] + position.y * vp.m[1][1] + position.z * vp.m[2][1] + vp.m[3][1]) / w;
+		screen = {(x + 1.0f) * 640.0f, (1.0f - y) * 360.0f};
+		return true;
+	}
+}
+
 void GamePlayScene::Initialize(WinApp* winApp, GraphicsDevice* graphicsDevice)
 {
 	winApp_ = winApp;
@@ -32,18 +47,18 @@ void GamePlayScene::Initialize(WinApp* winApp, GraphicsDevice* graphicsDevice)
 	// Catmull-Rom補間による三次曲線レールカメラ。
 	// ゲーム開始時からレールに沿って自動で進む。
 	railCamera_ = std::make_unique<RailCamera>();
-	// 約180のコースを75秒で進む。緩やかなカーブで前方を見通しやすくする。
+	// Cover 270 world units in 75 seconds.
 	constexpr float kRailSpeed = 1.0f / (75.0f * 60.0f);
 	railCamera_->Initialize(camera_.get(), {
-		{ 0.0f, 0.0f, -30.0f },
+		{ 0.0f, 0.0f, -45.0f },
 		{ 0.0f, 0.0f,   0.0f },
-		{ 2.0f, 0.5f,  30.0f },
-		{ 5.0f, 1.0f,  60.0f },
-		{ 0.0f, 1.5f,  90.0f },
-		{-5.0f, 1.0f, 120.0f },
-		{-2.0f, 0.5f, 150.0f },
-		{ 0.0f, 0.0f, 180.0f },
-		{ 0.0f, 0.0f, 210.0f }
+		{ 2.0f, 0.5f,  45.0f },
+		{ 5.0f, 1.0f,  90.0f },
+		{ 0.0f, 1.5f, 135.0f },
+		{-5.0f, 1.0f, 180.0f },
+		{-2.0f, 0.5f, 225.0f },
+		{ 0.0f, 0.0f, 270.0f },
+		{ 0.0f, 0.0f, 315.0f }
 	});
 	railCamera_->SetSpeed(kRailSpeed);
 	railCamera_->SetLoop(false);
@@ -74,6 +89,7 @@ void GamePlayScene::Initialize(WinApp* winApp, GraphicsDevice* graphicsDevice)
 
 	skydome_ = std::make_unique<Skydome>();
 	skydome_->Initialize(graphicsDevice_, camera_.get());
+	InitializeScenery();
 
 	player_ = std::make_unique<Player>();
 	player_->Initialize(object3DManager_.get(), "player/player.obj");
@@ -84,31 +100,22 @@ void GamePlayScene::Initialize(WinApp* winApp, GraphicsDevice* graphicsDevice)
 	enemySpawnController_ = std::make_unique<EnemySpawnController>();
 	enemySpawnController_->Initialize(object3DManager_.get(), "enemy/enemy.obj");
 	enemySpawnController_->SetDespawnDistance(1000.0f);
-	// 15秒おきに左右の画面外から進入し、3秒かけて前方の戦闘位置へ向かう。
-	// 固定のワールド座標ではなく、コース変更に追従する配置。
+	const float courseLength = railCamera_->GetPositionAtProgress(1.0f).z;
+	constexpr float kEnemyDistance = 27.0f;
 	for (int i = 0; i < MissionState::kTargetCount; ++i) {
 		const int frame = i * 15 * 60;
-		const float progress = float(frame) * kRailSpeed;
-		const Vector3 railPosition = railCamera_->GetPositionAtProgress(progress);
-		const Vector3 ahead = railCamera_->GetPositionAtProgress(progress + 0.01f);
-		const Vector3 forward = Normalize(Vector3{ ahead.x - railPosition.x, ahead.y - railPosition.y, ahead.z - railPosition.z });
-		const Vector3 right = Normalize(Vector3{ forward.z, 0.0f, -forward.x });
-		const float side = i % 2 == 0 ? -2.5f : 2.5f;
-		const float entranceSide = i % 2 == 0 ? -60.0f : 60.0f;
-		const Vector3 entranceStart = {
-			railPosition.x + forward.x * 45.0f + right.x * entranceSide,
-			railPosition.y + forward.y * 45.0f + 5.0f,
-			railPosition.z + forward.z * 45.0f + right.z * entranceSide
-		};
-		enemySpawnController_->AddSpawnEvent(frame, {
-			railPosition.x + forward.x * 18.0f + right.x * side,
-			railPosition.y + forward.y * 18.0f,
-			railPosition.z + forward.z * 18.0f + right.z * side
-		}, entranceStart, 3 * 60);
+		const float combatProgress = float(frame) * kRailSpeed + kEnemyDistance / courseLength;
+		const Vector3 railPosition = railCamera_->GetPositionAtProgress(combatProgress);
+		const float side = i % 2 == 0 ? -1.25f : 1.25f;
+		const Vector3 destination{railPosition.x + side, railPosition.y, railPosition.z};
+		// Descend inside the flight corridor, clear of the roadside buildings.
+		const Vector3 entranceStart{destination.x, destination.y + 20.0f, destination.z};
+		enemySpawnController_->AddSpawnEvent(frame, destination, entranceStart, 3 * 60);
 	}
 	// スプライト共通部の初期化
 	spriteManager_ = std::make_unique<SpriteManager>();
 	spriteManager_->Initialize(graphicsDevice_);
+	InitializeWind();
 
 	TextureManager::GetInstance()->LoadTexture("Resources/uvChecker.png");
 	TextureManager::GetInstance()->LoadTexture("Resources/monsterBall.png");
@@ -118,8 +125,7 @@ void GamePlayScene::Initialize(WinApp* winApp, GraphicsDevice* graphicsDevice)
 	reticle3D_ = std::make_unique<Reticle3D>();
 	reticle3D_->Initialize(
 		spriteManager_.get(),
-		winApp_,
-		"Resources/circle2.png");
+		winApp_);
 	gameUi_ = std::make_unique<GameUi>();
 	gameUi_->Initialize(spriteManager_.get());
 	// タイトルに合わせた白文字画像。左上3、右上2、左下1、右下START。
@@ -277,10 +283,16 @@ void GamePlayScene::Update() {
 		}
 		return;
 	}
-	// スタート演出の次のフレームから通常プレイを開始する。
+	if (mission_.GetPhase() == MissionState::Phase::Clear) {
+		if (uiFrames_ - combatImpacts_.back().frame >= kDefeatMessageFrames) {
+			SceneManager::GetInstance()->ChangeScene(std::make_unique<ClearScene>(mission_));
+		}
+		return;
+	}
+	// Start gameplay as soon as the START banner appears.
 	if (startFrames_ < kCountdownFrames + kStartBannerFrames) {
 		++startFrames_;
-		return;
+		if (startFrames_ < kCountdownFrames) { return; }
 	}
 
 	mission_.Tick();
@@ -385,6 +397,7 @@ void GamePlayScene::Update() {
 		railPlayerOffset_.y = std::clamp(railPlayerOffset_.y, -1.5f, 2.5f);
 
 		railCamera_->Update();
+		UpdateWind();
 		const Vector3 railPosition = railCamera_->GetRailPosition();
 		const Vector3 railRight = railCamera_->GetRight();
 		const Vector3 playerPosition = {
@@ -420,7 +433,6 @@ void GamePlayScene::Update() {
 			70.0f
 		);
 	}
-	reticle3D_->SetLocked(lockOnTarget_ != nullptr);
 
 	if (input_->PushKey(DIK_SPACE) && shotCooldown_ == 0) {
 		SpawnPlayerBullet();
@@ -447,15 +459,13 @@ void GamePlayScene::Update() {
 		reticle3D_->UpdateLockMarker(*camera_, nullptr);
 	}
 
+	reticle3D_->SetLocked(lockOnTarget_ != nullptr);
+
 	isPlayerEnemyColliding_ =
 		enemySpawnController_->IsCollision(player_->GetCollider());
 
 	if (isPlayerEnemyColliding_) { mission_.Damage(); }
 	mission_.Resolve();
-	if (mission_.GetPhase() == MissionState::Phase::Clear) {
-		SceneManager::GetInstance()->ChangeScene(std::make_unique<ClearScene>(mission_));
-		return;
-	}
 	if (mission_.GetPhase() == MissionState::Phase::GameOver) {
 		gameOverFrames_ = 0;
 		crashStartPosition_ = player_->GetTranslate();
@@ -523,6 +533,10 @@ void GamePlayScene::Draw() {
 
 	// === 3Dオブジェクト描画 ===
 	object3DManager_->SetCommonRenderState();
+	for (auto& object : scenery_) {
+		object->Update();
+		object->Draw(skinCluster_);
+	}
 	if (mission_.GetPhase() == MissionState::Phase::GameOver || !mission_.IsInvincible() || (uiFrames_ / 5) % 2 == 0) {
 		player_->Draw(skinCluster_);
 	}
@@ -613,16 +627,22 @@ void GamePlayScene::Draw() {
 
 	// === スプライト描画 ===
 	spriteManager_->SetCommonRenderState();
+	if (railCamera_->IsActive() && startFrames_ >= kCountdownFrames &&
+		mission_.GetPhase() == MissionState::Phase::Playing) {
+		for (const auto& streak : windStreaks_) {
+			streak->Draw();
+		}
+	}
 	for (auto& bullet : playerBullets_) {
 		bullet->Draw();
 	}
 	for (auto& bullet : enemyBullets_) {
 		bullet->Draw();
 	}
-	if (startFrames_ >= kCountdownFrames + kStartBannerFrames &&
-		mission_.GetPhase() == MissionState::Phase::Playing) { reticle3D_->Draw(); }
 	DrawGameUi();
 	DrawStartEffect();
+	if (startFrames_ >= kCountdownFrames &&
+		mission_.GetPhase() == MissionState::Phase::Playing) { reticle3D_->Draw(*gameUi_); }
 	DrawGameOverEffect();
 
 }
@@ -644,10 +664,15 @@ void GamePlayScene::Finalize() {
 	reticle3D_.reset();
 	player_.reset();
 	enemySpawnController_.reset();
+	scenery_.clear();
+	sceneryColliders_.clear();
 	object3DManager_.reset();
 
 	sprites_.clear();
 
+	for (auto& streak : windStreaks_) {
+		streak.reset();
+	}
 	spriteManager_.reset();
 }
 
@@ -662,12 +687,16 @@ void GamePlayScene::StartMission()
 	startFrames_ = 0;
 	gameOverFrames_ = 0;
 	uiFrames_ = 0;
+	windTime_ = 0.0f;
+	UpdateWind();
 	playerBullets_.clear();
 	enemyBullets_.clear();
 	lockOnTarget_ = nullptr;
 	enemySpawnController_->Reset();
 	enemyBulletTimer_ = 0;
 	shotCooldown_ = 0;
+	muzzleFlashFrame_ = -kMuzzleFlashFrames;
+	combatImpacts_.clear();
 	isPlayerEnemyColliding_ = false;
 	showDebug_ = false;
 	railCamera_->Reset();
@@ -693,25 +722,24 @@ void GamePlayScene::DrawGameUi()
 	const Vector4 cyan{ 0.2f, 0.9f, 0.9f, 1.0f };
 	const Vector4 panel{ 0.025f, 0.045f, 0.08f, 0.94f };
 	gameUi_->Begin();
-	if (mission_.GetPhase() == MissionState::Phase::Playing &&
-		startFrames_ >= kCountdownFrames + kStartBannerFrames) {
+	const auto phase = mission_.GetPhase();
+	if ((phase == MissionState::Phase::Playing || phase == MissionState::Phase::Clear) &&
+		startFrames_ >= kCountdownFrames) {
 		// 未ロックの敵にも目印を出し、空の背景に埋もれないようにする。
 		const auto& vp = camera_->GetViewProjectionMatrix();
 		for (const auto& enemy : enemySpawnController_->GetEnemies()) {
 			Vector3 p = enemy->GetTranslate();
 			p.y += 2.0f * enemy->GetScale().y;
-			const float w = p.x * vp.m[0][3] + p.y * vp.m[1][3] + p.z * vp.m[2][3] + vp.m[3][3];
-			if (w <= 0.0f) { continue; }
-			const float z = (p.x * vp.m[0][2] + p.y * vp.m[1][2] + p.z * vp.m[2][2] + vp.m[3][2]) / w;
-			if (z < 0.0f || z > 1.0f) { continue; }
-			const float x = ((p.x * vp.m[0][0] + p.y * vp.m[1][0] + p.z * vp.m[2][0] + vp.m[3][0]) / w + 1.0f) * 640.0f;
-			const float y = (1.0f - (p.x * vp.m[0][1] + p.y * vp.m[1][1] + p.z * vp.m[2][1] + vp.m[3][1]) / w) * 360.0f;
+			Vector2 screen{};
+			if (!ProjectToScreen(vp, p, screen)) { continue; }
+			const auto [x, y] = screen;
 			if (x < 40.0f || x > 1240.0f || y < 128.0f || y > 650.0f) { continue; }
 			// ロック対象には既存のLOCK ON表示があるため二重に表示しない。
 			if (enemy.get() == lockOnTarget_) { continue; }
 			gameUi_->Rect(x - 34.0f, y - 26.0f, 68.0f, 24.0f, panel);
 			gameUi_->Text("ENEMY", x - 27.0f, y - 25.0f, 1.2f, orange);
 		}
+		DrawCombatFeedback();
 		gameUi_->Rect(24, 20, 1232, 76, panel);
 		gameUi_->Rect(24, 20, 4, 76, orange);
 		gameUi_->Text("HP", 44, 42, 2, white);
@@ -732,6 +760,52 @@ void GamePlayScene::DrawGameUi()
 		return;
 	}
 
+}
+
+void GamePlayScene::DrawCombatFeedback()
+{
+	const auto& vp = camera_->GetViewProjectionMatrix();
+	Vector2 center{};
+	const int muzzleAge = uiFrames_ - muzzleFlashFrame_;
+	if (muzzleAge < kMuzzleFlashFrames && ProjectToScreen(vp, muzzleFlashPosition_, center)) {
+		const float opacity = 1.0f - float(muzzleAge) / kMuzzleFlashFrames;
+		const Vector4 glow{0.3f, 0.85f, 1.0f, opacity};
+		const float radius = 7.0f + 10.0f * opacity;
+		gameUi_->Line({center.x - radius, center.y}, {center.x + radius, center.y}, 3.0f, glow);
+		gameUi_->Line({center.x, center.y - radius}, {center.x, center.y + radius}, 3.0f, glow);
+		gameUi_->Rect(center.x - 3.0f, center.y - 3.0f, 6.0f, 6.0f, {1.0f, 1.0f, 1.0f, opacity});
+	}
+
+	for (const auto& impact : combatImpacts_) {
+		const int age = uiFrames_ - impact.frame;
+		if (age >= kImpactFrames || !ProjectToScreen(vp, impact.position, center)) { continue; }
+		const float progress = float(age) / kImpactFrames;
+		const float opacity = 1.0f - progress;
+		const float radius = 9.0f + 42.0f * progress;
+		if (age < 7) {
+			const float flash = 1.0f - float(age) / 7.0f;
+			gameUi_->Rect(center.x - 5.0f, center.y - 5.0f, 10.0f, 10.0f, {1.0f, 0.95f, 0.65f, flash});
+		}
+		for (int i = 0; i < 10; ++i) {
+			const float angle = 0.6283185f * float(i) + 0.19f;
+			const Vector2 direction{std::cos(angle), std::sin(angle)};
+			const float inner = radius * (0.60f + 0.12f * float(i % 3));
+			const float outer = inner + 17.0f * opacity + 4.0f;
+			gameUi_->Line(
+				{center.x + direction.x * inner, center.y + direction.y * inner},
+				{center.x + direction.x * outer, center.y + direction.y * outer},
+				1.5f + 2.5f * opacity, {1.0f, 0.48f + 0.4f * opacity, 0.12f, opacity});
+		}
+	}
+
+	if (!combatImpacts_.empty()) {
+		const int age = uiFrames_ - combatImpacts_.back().frame;
+		if (age < kDefeatMessageFrames) {
+			const float opacity = std::clamp(float(kDefeatMessageFrames - age) / 12.0f, 0.0f, 1.0f);
+			gameUi_->Rect(529.0f, 108.0f, 222.0f, 32.0f, {0.025f, 0.045f, 0.08f, 0.85f * opacity});
+			gameUi_->CenteredText("TARGET DOWN", 109.0f, 1.6f, {1.0f, 0.7f, 0.25f, opacity});
+		}
+	}
 }
 
 void GamePlayScene::DrawStartEffect()
@@ -842,6 +916,103 @@ void GamePlayScene::DrawGameOverEffect()
 	gameOverReasonSprite_->Draw();
 }
 
+void GamePlayScene::InitializeScenery()
+{
+	constexpr char kGroundModel[] = "city/ground.obj";
+	constexpr char kBuildingModel[] = "city/building.obj";
+	ModelManager::GetInstance()->LoadModel(kGroundModel);
+	ModelManager::GetInstance()->LoadModel(kBuildingModel);
+
+	auto addScenery = [this](const char* model, const Vector3& position, const Vector3& scale) {
+		auto object = std::make_unique<Object3D>();
+		object->Initialize(object3DManager_.get());
+		object->SetModel(model);
+		object->SetTranslate(position);
+		object->SetScale(scale);
+		scenery_.push_back(std::move(object));
+	};
+
+	auto addCollider = [this](const Vector3& center, const Vector3& halfSize) {
+		auto& collider = sceneryColliders_.emplace_back();
+		collider.SetCenter(center);
+		collider.SetHalfSize(halfSize);
+		collider.SetAttribute(CollisionLayer::Scenery);
+		collider.SetMask(CollisionLayer::PlayerBullet | CollisionLayer::EnemyBullet);
+	};
+	auto addBuilding = [&](const Vector3& position, const Vector3& scale) {
+		addScenery(kBuildingModel, position, scale);
+		// The main block and the narrower rooftop structure in building.obj.
+		addCollider({position.x, position.y + scale.y * 0.5f, position.z},
+			{scale.x * 0.5f, scale.y * 0.5f, scale.z * 0.5f});
+		addCollider({position.x, position.y + scale.y * 1.085f, position.z},
+			{scale.x * 0.3f, scale.y * 0.085f, scale.z * 0.3f});
+	};
+
+	const float courseLength = railCamera_->GetPositionAtProgress(1.0f).z;
+	const float halfCourseLength = courseLength * 0.5f;
+	constexpr float kGroundHeight = -6.0f;
+	const Vector3 groundPosition{0.0f, kGroundHeight, halfCourseLength + 9.0f};
+	const Vector3 groundScale{90.0f, 1.0f, halfCourseLength + 51.0f};
+	addScenery(kGroundModel, groundPosition, groundScale);
+	addCollider(groundPosition, {groundScale.x, 0.0f, groundScale.z});
+
+	// Keep roadside buildings visible past the end of the rail.
+	constexpr float kBlockSpacing = 13.0f;
+	const int blockCount = static_cast<int>((courseLength + 40.0f) / kBlockSpacing);
+	for (int block = 0; block < blockCount; ++block) {
+		const float distance = 4.0f + kBlockSpacing * float(block);
+		const float progress = distance / courseLength;
+		const Vector3 railPosition = railCamera_->GetPositionAtProgress(progress);
+		for (int side : {-1, 1}) {
+			const int variation = block + (side > 0 ? 3 : 0);
+			const float setback = 7.5f + 0.75f * float((variation * 3) % 5);
+			const float height = 4.0f + float((variation * 7) % 5);
+			const float width = 3.0f + float(variation % 3);
+			const float z = distance + (side > 0 ? 5.0f : 0.0f);
+			addBuilding({railPosition.x + float(side) * setback, kGroundHeight, z},
+				{width, height, 5.0f + float(variation % 4)});
+
+			const float outerHeight = 9.0f + float((variation * 5) % 8);
+			addBuilding({railPosition.x + float(side) * (23.0f + float((variation * 3) % 9)), kGroundHeight, z + 3.0f},
+				{7.0f + float(variation % 3), outerHeight, 8.0f});
+		}
+	}
+}
+
+void GamePlayScene::InitializeWind()
+{
+	constexpr char kWindTexture[] = "Resources/city/wind.png";
+	TextureManager::GetInstance()->LoadTexture(kWindTexture);
+	for (auto& streak : windStreaks_) {
+		streak = std::make_unique<Sprite>();
+		streak->Initialize(spriteManager_.get(), kWindTexture);
+		streak->SetTextureSize({128.0f, 16.0f});
+		streak->SetAnchorPoint({0.5f, 0.5f});
+	}
+}
+
+void GamePlayScene::UpdateWind()
+{
+	windTime_ = std::fmod(windTime_ + 2.0f / 60.0f, 12.0f);
+	const float progress = railCamera_->GetProgress();
+	const float flightFade = std::clamp((std::min)(progress, 1.0f - progress) * 75.0f, 0.0f, 1.0f);
+	constexpr float kFullTurn = 6.2831853f;
+	for (size_t i = 0; i < windStreaks_.size(); ++i) {
+		const float phase = std::fmod(windTime_ * (0.75f + 0.25f * float(i % 3))
+			+ float((i * 7) % windStreaks_.size()) / float(windStreaks_.size()), 1.0f);
+		const float angle = kFullTurn * (float(i) + 0.21f * float(i % 4)) / float(windStreaks_.size());
+		const Vector2 direction = {820.0f * std::cos(angle), 480.0f * std::sin(angle)};
+		const float distance = 0.40f + 0.78f * phase * phase;
+		const float fade = std::sin(phase * kFullTurn * 0.5f);
+		auto& streak = windStreaks_[i];
+		streak->SetPosition({640.0f + direction.x * distance, 205.0f + direction.y * distance});
+		streak->SetRotation(std::atan2(direction.y, direction.x));
+		streak->SetSize({30.0f + 135.0f * phase, 1.5f + 2.0f * phase});
+		streak->SetColor({0.80f, 0.93f, 1.0f, 0.54f * fade * flightFade});
+		streak->Update();
+	}
+}
+
 void GamePlayScene::UpdateFollowCamera()
 {
 	const Vector3 playerPosition = player_->GetTranslate();
@@ -882,6 +1053,8 @@ void GamePlayScene::SpawnPlayerBullet()
 	start.x += direction.x * 0.8f;
 	start.y += direction.y * 0.8f;
 	start.z += direction.z * 0.8f;
+	muzzleFlashPosition_ = start;
+	muzzleFlashFrame_ = uiFrames_;
 
 	if (lockOnTarget_ != nullptr &&
 		enemySpawnController_->ContainsEnemy(lockOnTarget_)) {
@@ -956,12 +1129,17 @@ void GamePlayScene::SpawnEnemyBullet()
 
 void GamePlayScene::UpdateProjectiles()
 {
-	for (auto& bullet : playerBullets_) {
-		bullet->Update(*camera_);
-	}
-	for (auto& bullet : enemyBullets_) {
-		bullet->Update(*camera_);
-	}
+	auto updateBullets = [this](auto& bullets) {
+		for (auto& bullet : bullets) {
+			bullet->Update(*camera_);
+			if (bullet->IsActive() && std::any_of(sceneryColliders_.begin(), sceneryColliders_.end(),
+				[&bullet](const Collider& scenery) { return bullet->GetCollider().IsCollision(scenery); })) {
+				bullet->Deactivate();
+			}
+		}
+	};
+	updateBullets(playerBullets_);
+	updateBullets(enemyBullets_);
 }
 
 void GamePlayScene::CheckProjectileCollisions()
@@ -972,6 +1150,7 @@ void GamePlayScene::CheckProjectileCollisions()
 		}
 
 		if (enemySpawnController_->HitEnemy(playerBullet->GetCollider())) {
+			combatImpacts_.push_back({playerBullet->GetPosition(), uiFrames_});
 			mission_.DefeatEnemy();
 			playerBullet->Deactivate();
 			continue;

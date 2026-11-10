@@ -34,11 +34,7 @@ void Object3D::Initialize(Object3DManager* object3DManager)
 	directionalLightData->intensity = 1.0f;
 
 	// transformの初期化
-	transform = {
-		.scale = {1.0f, 1.0f, 1.0f},
-		.rotate = {0.0f, 0.0f, 0.0f},
-		.translate = {0.0f, 0.0f, 0.0f}
-	};
+	transform = kDefaultTransform;
 	/*cameraTransform = {
 		.scale = {1.0f, 1.0f, 1.0f},
 		.rotate = {0.3f, 0.0f, 0.0f},

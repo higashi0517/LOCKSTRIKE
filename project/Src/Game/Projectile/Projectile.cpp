@@ -43,14 +43,16 @@ void Projectile::Initialize(
 		collider_.SetAttribute(CollisionLayer::PlayerBullet);
 		collider_.SetMask(
 			CollisionLayer::Enemy |
-			CollisionLayer::EnemyBullet
+			CollisionLayer::EnemyBullet |
+			CollisionLayer::Scenery
 		);
 	}
 	else {
 		collider_.SetAttribute(CollisionLayer::EnemyBullet);
 		collider_.SetMask(
 			CollisionLayer::Player |
-			CollisionLayer::PlayerBullet
+			CollisionLayer::PlayerBullet |
+			CollisionLayer::Scenery
 		);
 	}
 }

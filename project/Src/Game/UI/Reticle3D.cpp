@@ -1,4 +1,5 @@
 #include "Reticle3D.h"
+#include "GameUi.h"
 
 #include "SpriteManager.h"
 #include "WinApp.h"
@@ -17,21 +18,11 @@ namespace
 	constexpr float kScreenHeight = 720.0f;
 }
 
-void Reticle3D::Initialize(
-	SpriteManager* spriteManager,
-	WinApp* winApp,
-	const std::string& textureFilePath)
+void Reticle3D::Initialize(SpriteManager* spriteManager, WinApp* winApp)
 {
 	assert(spriteManager != nullptr);
 	assert(winApp != nullptr);
 	winApp_ = winApp;
-
-	sprite_ = std::make_unique<Sprite>();
-	sprite_->Initialize(spriteManager, textureFilePath);
-	sprite_->SetAnchorPoint({ 0.5f, 0.5f });
-	sprite_->SetSize({ 32.0f, 32.0f });
-	sprite_->SetColor({ 0.2f, 1.0f, 0.3f, 0.9f });
-	sprite_->Update();
 
 	TextureManager::GetInstance()->LoadTexture("Resources/debugfont.png");
 	auto makeSolid = [&]() {
@@ -132,22 +123,36 @@ void Reticle3D::Update(const Camera& camera)
 		cameraPosition.z + rayDirection.z * distance_
 	};
 
-	if (isVisible_) {
-		sprite_->SetPosition(screenPosition_);
-		sprite_->Update();
-	}
 }
 
-void Reticle3D::Draw()
+void Reticle3D::Draw(GameUi& ui)
 {
-	if (isVisible_ && sprite_) {
-		sprite_->Draw();
-	}
 	if (isLockMarkerVisible_) {
 		for (auto& outline : lockCornerOutlines_) { outline->Draw(); }
 		for (auto& corner : lockCorners_) { corner->Draw(); }
 		lockLabelBackground_->Draw();
 		for (auto& letter : lockLabel_) { letter->Draw(); }
+	}
+	if (!isVisible_) { return; }
+
+	constexpr float kGap = 6.0f;
+	constexpr float kHalfThickness = 1.5f;
+	const float armLength = isLocked_ ? 15.0f : 11.0f;
+	const float extent = kGap + armLength;
+	const std::array<Vector4, 5> parts{{
+		{-extent, -kHalfThickness, armLength, 3.0f},
+		{kGap, -kHalfThickness, armLength, 3.0f},
+		{-kHalfThickness, -extent, 3.0f, armLength},
+		{-kHalfThickness, kGap, 3.0f, armLength},
+		{-kHalfThickness, -kHalfThickness, 3.0f, 3.0f}
+	}};
+	const Vector4 color = isLocked_ ? Vector4{1.0f, 0.55f, 0.12f, 1.0f}
+		: Vector4{0.75f, 0.98f, 1.0f, 1.0f};
+	for (const auto& part : parts) {
+		const float x = screenPosition_.x + part.x;
+		const float y = screenPosition_.y + part.y;
+		ui.Rect(x - 1.0f, y - 1.0f, part.z + 2.0f, part.w + 2.0f, {0.02f, 0.03f, 0.05f, 1.0f});
+		ui.Rect(x, y, part.z, part.w, color);
 	}
 }
 
@@ -198,23 +203,6 @@ void Reticle3D::UpdateLockMarker(const Camera& camera, const Vector3* targetPosi
 		lockLabel_[i]->SetPosition({ labelX - 63.0f + float(i) * 18.0f, labelY - 16.0f });
 		lockLabel_[i]->Update();
 	}
-}
-
-void Reticle3D::SetLocked(bool isLocked)
-{
-	if (isLocked_ == isLocked || !sprite_) {
-		return;
-	}
-	isLocked_ = isLocked;
-	if (isLocked_) {
-		sprite_->SetColor({ 1.0f, 0.25f, 0.05f, 1.0f });
-		sprite_->SetSize({ 42.0f, 42.0f });
-	}
-	else {
-		sprite_->SetColor({ 0.2f, 1.0f, 0.3f, 0.9f });
-		sprite_->SetSize({ 32.0f, 32.0f });
-	}
-	sprite_->Update();
 }
 
 void Reticle3D::DrawDebug(

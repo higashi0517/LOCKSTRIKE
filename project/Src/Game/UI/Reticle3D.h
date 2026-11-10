@@ -4,8 +4,8 @@
 #include "Sprite.h"
 #include <memory>
 #include <array>
-#include <string>
 
+class GameUi;
 class SpriteManager;
 class WinApp;
 
@@ -13,13 +13,10 @@ class WinApp;
 class Reticle3D
 {
 public:
-	void Initialize(
-		SpriteManager* spriteManager,
-		WinApp* winApp,
-		const std::string& textureFilePath);
+	void Initialize(SpriteManager* spriteManager, WinApp* winApp);
 	void Update(const Camera& camera);
-	void Draw();
-	void SetLocked(bool isLocked);
+	void Draw(GameUi& ui);
+	void SetLocked(bool isLocked) { isLocked_ = isLocked; }
 	void UpdateLockMarker(const Camera& camera, const Vector3* targetPosition);
 	void DrawDebug(
 		const Matrix4x4& viewProjectionMatrix,
@@ -44,7 +41,6 @@ private:
 	bool isLockMarkerVisible_ = false;
 	float lockPulse_ = 0.0f;
 
-	std::unique_ptr<Sprite> sprite_;
 	WinApp* winApp_ = nullptr;
 	Vector3 worldPosition_ = { 0.0f, 0.0f, 0.0f };
 	Vector2 screenPosition_ = { 640.0f, 360.0f };

@@ -36,7 +36,12 @@ private:
 	// 平行光源データを指すポインタ
 	DirectionalLight* directionalLightData = nullptr;
 
-	EulerTransform transform;
+	static constexpr EulerTransform kDefaultTransform{
+		.scale = {1.0f, 1.0f, 1.0f},
+		.rotate = {0.0f, 0.0f, 0.0f},
+		.translate = {0.0f, 0.0f, 0.0f}
+	};
+	EulerTransform transform = kDefaultTransform;
 	//Transform cameraTransform;
 
 	Model* model = nullptr;
