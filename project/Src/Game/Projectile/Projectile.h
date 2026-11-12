@@ -39,14 +39,20 @@ public:
 	const Vector3& GetPosition() const { return position_; }
 
 protected:
-	bool WorldToScreen(
-		const Camera& camera,
-		Vector2& screenPosition,
-		float& clipW
-	) const;
+	const Vector3& GetVelocity() const { return velocity_; }
+	void SetVelocity(const Vector3& velocity) { velocity_ = velocity; }
+	bool IsVisible() const { return isVisible_; }
+	void SetSpriteAppearance(const Vector2& size, float rotation);
 	bool WorldPositionToScreen(
 		const Camera& camera,
 		const Vector3& worldPosition,
+		Vector2& screenPosition,
+		float& clipW
+	) const;
+
+private:
+	bool WorldToScreen(
+		const Camera& camera,
 		Vector2& screenPosition,
 		float& clipW
 	) const;

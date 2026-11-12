@@ -1,4 +1,5 @@
 #include "GamePlayScene.h"
+#include <optional>
 #include "SceneManager.h"
 #include "ClearScene.h"
 #include "GameOverScene.h"
@@ -341,17 +342,19 @@ void GamePlayScene::Update() {
 		player_->SetRotate(playerRotation);
 	}
 
-	Enemy* debugEnemy =
+	const Enemy* debugEnemy =
 		enemySpawnController_->GetNearestEnemy(player_->GetTranslate());
 	if (debugEnemy != nullptr) {
 		Vector3 enemyPosition = debugEnemy->GetTranslate();
 		Vector3 enemyRotation = debugEnemy->GetRotate();
 
-		if (ImGui::DragFloat3("Enemy Position", &enemyPosition.x, 0.01f)) {
-			debugEnemy->SetTranslate(enemyPosition);
-		}
-		if (ImGui::DragFloat3("Enemy Rotation", &enemyRotation.x, 0.01f)) {
-			debugEnemy->SetRotate(enemyRotation);
+		const bool positionChanged = ImGui::DragFloat3("Enemy Position", &enemyPosition.x, 0.01f);
+		const bool rotationChanged = ImGui::DragFloat3("Enemy Rotation", &enemyRotation.x, 0.01f);
+		if (positionChanged || rotationChanged) {
+			enemySpawnController_->EditEnemyTransform(
+				*debugEnemy,
+				positionChanged ? std::optional{enemyPosition} : std::nullopt,
+				rotationChanged ? std::optional{enemyRotation} : std::nullopt);
 		}
 	}
 
@@ -563,8 +566,9 @@ void GamePlayScene::Draw() {
 		720.0f,
 		playerColliderColor
 	);
-	for (const auto& enemy : enemySpawnController_->GetEnemies()) {
-		enemy->GetCollider().Draw(
+	for (std::size_t index = 0; index < enemySpawnController_->GetEnemyCount(); ++index) {
+		const Enemy& enemy = enemySpawnController_->GetEnemyAt(index);
+		enemy.GetCollider().Draw(
 			viewProjectionMatrix,
 			1280.0f,
 			720.0f,
@@ -727,15 +731,16 @@ void GamePlayScene::DrawGameUi()
 		startFrames_ >= kCountdownFrames) {
 		// 未ロックの敵にも目印を出し、空の背景に埋もれないようにする。
 		const auto& vp = camera_->GetViewProjectionMatrix();
-		for (const auto& enemy : enemySpawnController_->GetEnemies()) {
-			Vector3 p = enemy->GetTranslate();
-			p.y += 2.0f * enemy->GetScale().y;
+		for (std::size_t index = 0; index < enemySpawnController_->GetEnemyCount(); ++index) {
+			const Enemy& enemy = enemySpawnController_->GetEnemyAt(index);
+			Vector3 p = enemy.GetTranslate();
+			p.y += 2.0f * enemy.GetScale().y;
 			Vector2 screen{};
 			if (!ProjectToScreen(vp, p, screen)) { continue; }
 			const auto [x, y] = screen;
 			if (x < 40.0f || x > 1240.0f || y < 128.0f || y > 650.0f) { continue; }
 			// ロック対象には既存のLOCK ON表示があるため二重に表示しない。
-			if (enemy.get() == lockOnTarget_) { continue; }
+			if (&enemy == lockOnTarget_) { continue; }
 			gameUi_->Rect(x - 34.0f, y - 26.0f, 68.0f, 24.0f, panel);
 			gameUi_->Text("ENEMY", x - 27.0f, y - 25.0f, 1.2f, orange);
 		}
@@ -1089,7 +1094,7 @@ void GamePlayScene::SpawnPlayerBullet()
 
 void GamePlayScene::SpawnEnemyBullet()
 {
-	Enemy* shootingEnemy =
+	const Enemy* shootingEnemy =
 		enemySpawnController_->GetNearestEnemy(player_->GetTranslate());
 	if (shootingEnemy == nullptr || shootingEnemy->IsEntering()) {
 		return;

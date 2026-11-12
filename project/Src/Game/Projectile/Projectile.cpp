@@ -96,6 +96,13 @@ void Projectile::Draw()
 	}
 }
 
+void Projectile::SetSpriteAppearance(const Vector2& size, float rotation)
+{
+	sprite_->SetRotation(rotation);
+	sprite_->SetSize(size);
+	sprite_->Update();
+}
+
 bool Projectile::WorldToScreen(
 	const Camera& camera,
 	Vector2& screenPosition,

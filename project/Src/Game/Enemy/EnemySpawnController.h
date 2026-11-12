@@ -4,6 +4,7 @@
 #include "Enemy.h"
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -32,8 +33,8 @@ public:
 	void Draw(const SkinCluster& skinCluster);
 	void Reset();
 
-	Enemy* GetNearestEnemy(const Vector3& position) const;
-	Enemy* GetLockOnTarget(
+	const Enemy* GetNearestEnemy(const Vector3& position) const;
+	const Enemy* GetLockOnTarget(
 		const Camera& camera,
 		const Vector2& reticlePosition,
 		float lockOnRadius) const;
@@ -41,9 +42,11 @@ public:
 	bool HitEnemy(const Collider& attackCollider);
 	bool IsCollision(const Collider& collider) const;
 
-	const std::vector<std::unique_ptr<Enemy>>& GetEnemies() const {
-		return enemies_;
-	}
+	const Enemy& GetEnemyAt(std::size_t index) const { return *enemies_.at(index); }
+	void EditEnemyTransform(
+		const Enemy& target,
+		const std::optional<Vector3>& position,
+		const std::optional<Vector3>& rotation);
 	std::size_t GetEnemyCount() const { return enemies_.size(); }
 	int GetElapsedFrames() const { return elapsedFrames_; }
 	void SetDespawnDistance(float distance) { despawnDistance_ = distance; }

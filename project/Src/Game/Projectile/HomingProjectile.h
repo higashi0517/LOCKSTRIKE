@@ -13,14 +13,14 @@ public:
 	void Initialize(
 		SpriteManager* spriteManager,
 		EnemySpawnController* enemySpawnController,
-		Enemy* target,
+		const Enemy* target,
 		const Vector3& position,
 		const Vector3& initialVelocity);
 	void Update(const Camera& camera) override;
 
 private:
 	EnemySpawnController* enemySpawnController_ = nullptr;
-	Enemy* target_ = nullptr;
+	const Enemy* target_ = nullptr;
 	float speed_ = 0.13f;
 	float homingRate_ = 0.08f;
 };

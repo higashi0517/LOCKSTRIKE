@@ -8,7 +8,7 @@
 void HomingProjectile::Initialize(
 	SpriteManager* spriteManager,
 	EnemySpawnController* enemySpawnController,
-	Enemy* target,
+	const Enemy* target,
 	const Vector3& position,
 	const Vector3& initialVelocity)
 {
@@ -31,13 +31,12 @@ void HomingProjectile::Initialize(
 		initialVelocity,
 		{ 1.0f, 0.45f, 0.05f, 1.0f });
 
-	sprite_->SetSize({ 32.0f, 10.0f });
-	sprite_->Update();
+	SetSpriteAppearance({ 32.0f, 10.0f }, 0.0f);
 }
 
 void HomingProjectile::Update(const Camera& camera)
 {
-	if (!isActive_) {
+	if (!IsActive()) {
 		return;
 	}
 
@@ -47,9 +46,9 @@ void HomingProjectile::Update(const Camera& camera)
 		Vector3 targetPosition = target_->GetTranslate();
 		// 機体の中心へ追尾する。
 		const Vector3 toTarget = {
-			targetPosition.x - position_.x,
-			targetPosition.y - position_.y,
-			targetPosition.z - position_.z
+			targetPosition.x - GetPosition().x,
+			targetPosition.y - GetPosition().y,
+			targetPosition.z - GetPosition().z
 		};
 		const float targetLength = std::sqrt(
 			toTarget.x * toTarget.x +
@@ -63,15 +62,15 @@ void HomingProjectile::Update(const Camera& camera)
 				toTarget.z / targetLength
 			};
 			const float currentLength = std::sqrt(
-				velocity_.x * velocity_.x +
-				velocity_.y * velocity_.y +
-				velocity_.z * velocity_.z);
+				GetVelocity().x * GetVelocity().x +
+				GetVelocity().y * GetVelocity().y +
+				GetVelocity().z * GetVelocity().z);
 			Vector3 currentDirection = desiredDirection;
 			if (currentLength > 0.0001f) {
 				currentDirection = {
-					velocity_.x / currentLength,
-					velocity_.y / currentLength,
-					velocity_.z / currentLength
+					GetVelocity().x / currentLength,
+					GetVelocity().y / currentLength,
+					GetVelocity().z / currentLength
 				};
 			}
 
@@ -88,11 +87,11 @@ void HomingProjectile::Update(const Camera& camera)
 				blendedDirection.y * blendedDirection.y +
 				blendedDirection.z * blendedDirection.z);
 			if (blendedLength > 0.0001f) {
-				velocity_ = {
+				SetVelocity({
 					blendedDirection.x / blendedLength * speed_,
 					blendedDirection.y / blendedLength * speed_,
 					blendedDirection.z / blendedLength * speed_
-				};
+				});
 			}
 		}
 	}
@@ -101,7 +100,7 @@ void HomingProjectile::Update(const Camera& camera)
 	}
 
 	Projectile::Update(camera);
-	if (!isActive_ || !isVisible_) {
+	if (!IsActive() || !IsVisible()) {
 		return;
 	}
 
@@ -110,12 +109,12 @@ void HomingProjectile::Update(const Camera& camera)
 	float currentClipW = 0.0f;
 	float nextClipW = 0.0f;
 	const Vector3 nextPosition = {
-		position_.x + velocity_.x * 8.0f,
-		position_.y + velocity_.y * 8.0f,
-		position_.z + velocity_.z * 8.0f
+		GetPosition().x + GetVelocity().x * 8.0f,
+		GetPosition().y + GetVelocity().y * 8.0f,
+		GetPosition().z + GetVelocity().z * 8.0f
 	};
 	if (WorldPositionToScreen(
-		camera, position_, currentScreen, currentClipW) &&
+		camera, GetPosition(), currentScreen, currentClipW) &&
 		WorldPositionToScreen(
 			camera, nextPosition, nextScreen, nextClipW)) {
 		const float angle = std::atan2(
@@ -128,8 +127,6 @@ void HomingProjectile::Update(const Camera& camera)
 		if (size > 34.0f) {
 			size = 34.0f;
 		}
-		sprite_->SetRotation(angle);
-		sprite_->SetSize({ size * 1.8f, size * 0.65f });
-		sprite_->Update();
+		SetSpriteAppearance({ size * 1.8f, size * 0.65f }, angle);
 	}
 }

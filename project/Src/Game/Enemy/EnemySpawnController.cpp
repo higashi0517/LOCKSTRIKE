@@ -83,10 +83,10 @@ void EnemySpawnController::Reset()
 	elapsedFrames_ = 0;
 }
 
-Enemy* EnemySpawnController::GetNearestEnemy(
+const Enemy* EnemySpawnController::GetNearestEnemy(
 	const Vector3& position) const
 {
-	Enemy* nearestEnemy = nullptr;
+	const Enemy* nearestEnemy = nullptr;
 	float nearestDistanceSquared = FLT_MAX;
 
 	for (const auto& enemy : enemies_) {
@@ -105,7 +105,7 @@ Enemy* EnemySpawnController::GetNearestEnemy(
 	return nearestEnemy;
 }
 
-Enemy* EnemySpawnController::GetLockOnTarget(
+const Enemy* EnemySpawnController::GetLockOnTarget(
 	const Camera& camera,
 	const Vector2& reticlePosition,
 	float lockOnRadius) const
@@ -115,7 +115,7 @@ Enemy* EnemySpawnController::GetLockOnTarget(
 	const Matrix4x4& viewProjection = camera.GetViewProjectionMatrix();
 	const float lockOnRadiusSquared = lockOnRadius * lockOnRadius;
 	float nearestScreenDistanceSquared = FLT_MAX;
-	Enemy* lockOnTarget = nullptr;
+	const Enemy* lockOnTarget = nullptr;
 
 	for (const auto& enemy : enemies_) {
 		Vector3 position = enemy->GetTranslate();
@@ -164,6 +164,25 @@ Enemy* EnemySpawnController::GetLockOnTarget(
 	}
 
 	return lockOnTarget;
+}
+
+void EnemySpawnController::EditEnemyTransform(
+	const Enemy& target,
+	const std::optional<Vector3>& position,
+	const std::optional<Vector3>& rotation)
+{
+	for (const auto& enemy : enemies_) {
+		if (enemy.get() != &target) {
+			continue;
+		}
+		if (position) {
+			enemy->SetTranslate(*position);
+		}
+		if (rotation) {
+			enemy->SetRotate(*rotation);
+		}
+		return;
+	}
 }
 
 bool EnemySpawnController::ContainsEnemy(const Enemy* target) const

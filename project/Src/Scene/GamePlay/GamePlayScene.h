@@ -98,7 +98,7 @@ private:
 	std::vector<std::unique_ptr<Projectile>> playerBullets_;
 	std::vector<std::unique_ptr<Projectile>> enemyBullets_;
 	std::unique_ptr<Reticle3D> reticle3D_;
-	Enemy* lockOnTarget_ = nullptr;
+	const Enemy* lockOnTarget_ = nullptr;
 	int enemyBulletTimer_ = 0;
 	/*Object3D* object3D_ = nullptr;
 	Object3D* object3D_2_ = nullptr;*/
