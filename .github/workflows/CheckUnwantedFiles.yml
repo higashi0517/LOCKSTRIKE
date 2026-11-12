@@ -49,7 +49,8 @@ jobs:
             # 3. または( -o )不要なファイルを検索(-type f)し、パスを出力(-print)
             UNWANTED_LIST=$(find . -path "./.git" -prune -o \
               \( \( "${DIR_CONDITIONS[@]}" \) -a -type d -print -prune \) -o \
-              \( \( "${NAME_CONDITIONS[@]}" \) -a -type f \  ! -path './project/externals/assimp/lib/Debug/assimp-vc143-mtd.pdb' -print \) \
+              \( \( "${NAME_CONDITIONS[@]}" \) -a -type f \
+                ! -path './project/externals/assimp/lib/Debug/assimp-vc143-mtd.pdb' -print \) \
               )
             # 検出結果があればエラーとして出力し、失敗させる
             if [ -n "$UNWANTED_LIST" ]; then
