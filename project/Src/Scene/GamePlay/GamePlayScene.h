@@ -34,7 +34,8 @@ class RenderTexture;
 class GamePlayScene : public BaseScene
 {
 public:
-	explicit GamePlayScene(bool previewGameOver = false);
+	enum class Preview { None, GameOver };
+	explicit GamePlayScene(Preview preview = Preview::None);
 	~GamePlayScene() override;
 
 	void Initialize(WinApp* winApp, GraphicsDevice* graphicsDevice)override;
@@ -44,7 +45,7 @@ public:
 
 private:
 	MissionState mission_;
-	bool previewGameOver_ = false;
+	Preview preview_;
 	std::unique_ptr<GameUi> gameUi_;
 	std::unique_ptr<Sprite> startEffectSprite_;
 	std::unique_ptr<Sprite> startHeadingSprite_;
@@ -56,6 +57,7 @@ private:
 	static constexpr int kMuzzleFlashFrames = 6;
 	static constexpr int kImpactFrames = 24;
 	static constexpr int kDefeatMessageFrames = 42;
+	static constexpr int kClearEffectFrames = 132;
 	struct CombatImpact {
 		Vector3 position;
 		int frame;
@@ -73,6 +75,7 @@ private:
 	Vector3 crashStartRotation_{};
 	void UpdateCrashEffect();
 	void DrawGameOverEffect();
+	void DrawClearEffect();
 	void StartMission();
 	void DrawStartEffect();
 	void DrawGameUi();

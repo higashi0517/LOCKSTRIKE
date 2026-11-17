@@ -3,8 +3,14 @@
 #include "TextureManager.h"
 #include <string>
 
+namespace
+{
+	constexpr int kFadeInFrames = 24;
+}
+
 void ClearScene::Initialize(WinApp* winApp, GraphicsDevice* graphicsDevice)
 {
+	fadeInFrames_ = 0;
 	input_ = std::make_unique<Input>();
 	input_->Initialize(winApp);
 	// シーンを切り替えた瞬間の押しっぱなしを、新しい決定入力にしない。
@@ -27,6 +33,9 @@ void ClearScene::Initialize(WinApp* winApp, GraphicsDevice* graphicsDevice)
 void ClearScene::Update()
 {
 	input_->Update();
+	if (fadeInFrames_ < kFadeInFrames) {
+		++fadeInFrames_;
+	}
 	if (input_->TriggerKey(DIK_RETURN)) {
 		SceneManager::GetInstance()->ChangeScene("GAMEPLAY");
 	}
@@ -44,6 +53,10 @@ void ClearScene::Draw()
 	gameUi_->CenteredText("TARGETS " + std::to_string(result_.GetDefeated()) +
 		" / 5    HP " + std::to_string(result_.GetHealth()) + " / 3    TIME " +
 		std::to_string(result_.GetRemainingSeconds()) + "s", 652, 1.3f, white);
+	if (fadeInFrames_ < kFadeInFrames) {
+		const float opacity = 1.0f - float(fadeInFrames_) / float(kFadeInFrames);
+		gameUi_->Rect(0, 0, 1280, 720, {0, 0, 0, opacity});
+	}
 }
 
 void ClearScene::Finalize()

@@ -19,6 +19,7 @@ public:
 private:
 	// 終了時のスコアをコピーし、ゲームシーンの寿命に依存させない。
 	MissionState result_;
+	int fadeInFrames_ = 0;
 	std::unique_ptr<Input> input_;
 	std::unique_ptr<SpriteManager> spriteManager_;
 	std::unique_ptr<Sprite> screen_;

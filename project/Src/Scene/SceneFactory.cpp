@@ -15,7 +15,7 @@ std::unique_ptr<BaseScene> SceneFactory::CreateScene(const std::string& sceneNam
 		newScene = std::make_unique<GamePlayScene>();
 	}
 	else if (sceneName == "GAMEOVER_PREVIEW") {
-		newScene = std::make_unique<GamePlayScene>(true);
+		newScene = std::make_unique<GamePlayScene>(GamePlayScene::Preview::GameOver);
 	}
 	else if (sceneName == "CLEAR") {
 		newScene = std::make_unique<ClearScene>();

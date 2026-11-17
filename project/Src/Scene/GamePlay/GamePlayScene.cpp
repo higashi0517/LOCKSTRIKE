@@ -253,7 +253,7 @@ void GamePlayScene::Initialize(WinApp* winApp, GraphicsDevice* graphicsDevice)
 	hr = graphicsDevice_->GetDevice()->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&copyPipelineState_));
 	assert(SUCCEEDED(hr));
 	StartMission();
-	if (previewGameOver_) {
+	if (preview_ == Preview::GameOver) {
 		// タイトルから墜落演出を確認する専用入口。通常の再挑戦には適用しない。
 		startFrames_ = kCountdownFrames + kStartBannerFrames;
 		while (mission_.GetHealth() > 0) {
@@ -263,6 +263,7 @@ void GamePlayScene::Initialize(WinApp* winApp, GraphicsDevice* graphicsDevice)
 		mission_.Resolve();
 		crashStartPosition_ = player_->GetTranslate();
 		crashStartRotation_ = player_->GetRotate();
+
 	}
 }
 
@@ -285,8 +286,24 @@ void GamePlayScene::Update() {
 		return;
 	}
 	if (mission_.GetPhase() == MissionState::Phase::Clear) {
-		if (uiFrames_ - combatImpacts_.back().frame >= kDefeatMessageFrames) {
+		const int clearFrame = combatImpacts_.empty()
+			? uiFrames_ + kDefeatMessageFrames
+			: uiFrames_ - combatImpacts_.back().frame;
+		if (clearFrame >= kClearEffectFrames) {
 			SceneManager::GetInstance()->ChangeScene(std::make_unique<ClearScene>(mission_));
+		} else if (clearFrame > kDefeatMessageFrames) {
+			const float flightTime = float(clearFrame - kDefeatMessageFrames);
+			const float speed = 0.035f + 0.002f * flightTime;
+			Vector3 position = player_->GetTranslate();
+			Vector3 rotation = player_->GetRotate();
+			position.x += std::sin(rotation.y) * speed;
+			position.z += std::cos(rotation.y) * speed;
+			position.y += speed * 0.23f;
+			rotation.x += (-0.18f - rotation.x) * 0.06f;
+			rotation.z += (-0.38f - rotation.z) * 0.06f;
+			player_->SetTranslate(position);
+			player_->SetRotate(rotation);
+			player_->UpdateTransform();
 		}
 		return;
 	}
@@ -540,7 +557,7 @@ void GamePlayScene::Draw() {
 		object->Update();
 		object->Draw(skinCluster_);
 	}
-	if (mission_.GetPhase() == MissionState::Phase::GameOver || !mission_.IsInvincible() || (uiFrames_ / 5) % 2 == 0) {
+	if (mission_.GetPhase() != MissionState::Phase::Playing || !mission_.IsInvincible() || (uiFrames_ / 5) % 2 == 0) {
 		player_->Draw(skinCluster_);
 	}
 	enemySpawnController_->Draw(skinCluster_);
@@ -648,6 +665,7 @@ void GamePlayScene::Draw() {
 	if (startFrames_ >= kCountdownFrames &&
 		mission_.GetPhase() == MissionState::Phase::Playing) { reticle3D_->Draw(*gameUi_); }
 	DrawGameOverEffect();
+	DrawClearEffect();
 
 }
 
@@ -680,7 +698,7 @@ void GamePlayScene::Finalize() {
 	spriteManager_.reset();
 }
 
-GamePlayScene::GamePlayScene(bool previewGameOver) : previewGameOver_(previewGameOver) {}
+GamePlayScene::GamePlayScene(Preview preview) : preview_(preview) {}
 
 GamePlayScene::~GamePlayScene() {}
 
@@ -882,6 +900,47 @@ void GamePlayScene::UpdateCrashEffect()
 		crashStartRotation_.z - 1.35f * eased + std::sin(frame * 0.25f) * 0.06f * (1.0f - tilt)
 	});
 	player_->UpdateTransform();
+}
+
+void GamePlayScene::DrawClearEffect()
+{
+	if (mission_.GetPhase() != MissionState::Phase::Clear) { return; }
+	const float frame = float(uiFrames_ - (combatImpacts_.empty() ? 0 : combatImpacts_.back().frame + kDefeatMessageFrames));
+	if (frame <= 0.0f) { return; }
+
+	const float reveal = std::clamp(frame / 22.0f, 0.0f, 1.0f);
+	const float width = 720.0f * (1.0f - (1.0f - reveal) * (1.0f - reveal));
+	const float textAlpha = std::clamp((frame - 8.0f) / 18.0f, 0.0f, 1.0f);
+	const float fade = std::clamp((frame - 57.0f) / 32.0f, 0.0f, 1.0f);
+	const Vector4 green{0.35f, 1.0f, 0.68f, reveal};
+
+	gameUi_->Rect(0, 0, 1280, 720, {0.01f, 0.045f, 0.035f, reveal * 0.28f});
+
+	// Keep the streaks near the edges so the ship and banner stay readable.
+	constexpr int kStreakCount = 16;
+	constexpr float kFullTurn = 6.2831853f;
+	const float boost = std::clamp((frame - 8.0f) / 44.0f, 0.0f, 1.0f);
+	const float travel = frame * (0.012f + 0.00022f * frame);
+	for (int i = 0; i < kStreakCount; ++i) {
+		const float angle = (float(i) + 0.5f) * kFullTurn / float(kStreakCount);
+		const float phase = std::fmod(travel + float(i) * 0.37f, 1.0f);
+		const float radius = 0.57f + phase * 0.53f;
+		const float length = 0.045f + boost * 0.12f;
+		const Vector2 direction{640.0f * std::cos(angle), 360.0f * std::sin(angle)};
+		const Vector2 start{640.0f + direction.x * radius, 360.0f + direction.y * radius};
+		const Vector2 end{start.x + direction.x * length, start.y + direction.y * length};
+		const float opacity = std::sin(phase * 3.1415927f) * boost * 0.65f;
+		gameUi_->Line(start, end, 1.5f + boost, {0.54f, 1.0f, 0.83f, opacity});
+	}
+
+	gameUi_->Rect(640 - width * 0.5f, 150, width, 88, {0.01f, 0.065f, 0.055f, reveal * 0.9f});
+	gameUi_->Rect(640 - width * 0.5f, 150, width, 2, green);
+	gameUi_->Rect(640 - width * 0.5f, 236, width, 2, green);
+	gameUi_->CenteredText("MISSION CLEAR", 194.0f - textAlpha * 26.0f, 3.0f,
+		{0.76f, 1.0f, 0.87f, textAlpha});
+	if (fade > 0.0f) {
+		gameUi_->Rect(0, 0, 1280, 720, {0, 0, 0, fade});
+	}
 }
 
 void GamePlayScene::DrawGameOverEffect()

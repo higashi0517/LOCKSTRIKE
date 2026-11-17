@@ -94,7 +94,6 @@ void TitleScene::UpdateAnimation()
 	constexpr float kDeltaTime = 1.0f / 60.0f;
 	titleTime_ += kDeltaTime;
 	if (titleLaunching_) {
-		// 出撃アニメーションの後、SceneManagerの共通フェードへ進む。
 		if (titleLaunchFrames_ >= kTitleLaunchFrames) {
 			SceneManager::GetInstance()->ChangeScene("GAMEPLAY");
 			return;
