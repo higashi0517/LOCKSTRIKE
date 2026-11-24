@@ -271,6 +271,9 @@ void GamePlayScene::Update() {
 
 	input_->Update();
 	++uiFrames_;
+	std::erase_if(projectileEffects_, [this](const ProjectileEffect& effect) {
+		return uiFrames_ - effect.frame >= kProjectileEffectFrames;
+	});
 	if (input_->TriggerKey(DIK_F1)) { showDebug_ = !showDebug_; }
 	if (input_->TriggerKey(DIK_ESCAPE)) {
 		SceneManager::GetInstance()->ChangeScene("TITLE");
@@ -654,12 +657,6 @@ void GamePlayScene::Draw() {
 			streak->Draw();
 		}
 	}
-	for (auto& bullet : playerBullets_) {
-		bullet->Draw();
-	}
-	for (auto& bullet : enemyBullets_) {
-		bullet->Draw();
-	}
 	DrawGameUi();
 	DrawStartEffect();
 	if (startFrames_ >= kCountdownFrames &&
@@ -719,6 +716,7 @@ void GamePlayScene::StartMission()
 	shotCooldown_ = 0;
 	muzzleFlashFrame_ = -kMuzzleFlashFrames;
 	combatImpacts_.clear();
+	projectileEffects_.clear();
 	isPlayerEnemyColliding_ = false;
 	showDebug_ = false;
 	railCamera_->Reset();
@@ -744,6 +742,13 @@ void GamePlayScene::DrawGameUi()
 	const Vector4 cyan{ 0.2f, 0.9f, 0.9f, 1.0f };
 	const Vector4 panel{ 0.025f, 0.045f, 0.08f, 0.94f };
 	gameUi_->Begin();
+	DrawProjectileEffects();
+	for (auto& bullet : playerBullets_) {
+		bullet->Draw();
+	}
+	for (auto& bullet : enemyBullets_) {
+		bullet->Draw();
+	}
 	const auto phase = mission_.GetPhase();
 	if ((phase == MissionState::Phase::Playing || phase == MissionState::Phase::Clear) &&
 		startFrames_ >= kCountdownFrames) {
@@ -785,6 +790,48 @@ void GamePlayScene::DrawGameUi()
 
 }
 
+void GamePlayScene::DrawProjectileEffects()
+{
+	const auto& vp = camera_->GetViewProjectionMatrix();
+	for (const auto& effect : projectileEffects_) {
+		const float progress = float(uiFrames_ - effect.frame) / kProjectileEffectFrames;
+		const float opacity = 1.0f - progress;
+		const bool enemy = effect.owner == ProjectileOwner::Enemy;
+		const Vector4 color = enemy
+			? Vector4{1.0f, 0.35f, 0.18f, opacity}
+			: Vector4{0.25f, 0.82f, 1.0f, opacity};
+
+		if (!effect.burst) {
+			Vector2 screen{};
+			if (!ProjectToScreen(vp, effect.position, screen)) { continue; }
+			const float size = (enemy ? 6.0f : 5.0f) * opacity;
+			gameUi_->Rect(screen.x - size * 0.5f, screen.y - size * 0.5f, size, size,
+				{color.x, color.y, color.z, opacity * 0.65f});
+			continue;
+		}
+
+		for (int i = 0; i < 8; ++i) {
+			const float angle = float(i) * 0.7853982f + float(effect.frame % 8) * 0.2f;
+			const Vector3 direction{std::cos(angle), std::sin(angle), (float(i % 3) - 1.0f) * 0.45f};
+			const float distance = (0.8f + 0.25f * float(i % 3)) * progress;
+			const Vector3 tail{
+				effect.position.x + direction.x * distance,
+				effect.position.y + direction.y * distance - 0.35f * progress * progress,
+				effect.position.z + direction.z * distance
+			};
+			const Vector3 head{
+				tail.x + direction.x * 0.25f * opacity,
+				tail.y + direction.y * 0.25f * opacity,
+				tail.z + direction.z * 0.25f * opacity
+			};
+			Vector2 start{}, end{};
+			if (ProjectToScreen(vp, tail, start) && ProjectToScreen(vp, head, end)) {
+				gameUi_->Line(start, end, 1.0f + 2.0f * opacity, color);
+			}
+		}
+	}
+}
+
 void GamePlayScene::DrawCombatFeedback()
 {
 	const auto& vp = camera_->GetViewProjectionMatrix();
@@ -801,25 +848,49 @@ void GamePlayScene::DrawCombatFeedback()
 
 	for (const auto& impact : combatImpacts_) {
 		const int age = uiFrames_ - impact.frame;
-		if (age >= kImpactFrames || !ProjectToScreen(vp, impact.position, center)) { continue; }
-		const float progress = float(age) / kImpactFrames;
-		const float opacity = 1.0f - progress;
-		const float radius = 9.0f + 42.0f * progress;
-		if (age < 7) {
+		if (age >= kImpactFrames) { continue; }
+
+		if (age < 7 && ProjectToScreen(vp, impact.position, center)) {
 			const float flash = 1.0f - float(age) / 7.0f;
 			gameUi_->Rect(center.x - 5.0f, center.y - 5.0f, 10.0f, 10.0f, {1.0f, 0.95f, 0.65f, flash});
 		}
-		for (int i = 0; i < 10; ++i) {
-			const float angle = 0.6283185f * float(i) + 0.19f;
-			const Vector2 direction{std::cos(angle), std::sin(angle)};
-			const float inner = radius * (0.60f + 0.12f * float(i % 3));
-			const float outer = inner + 17.0f * opacity + 4.0f;
-			gameUi_->Line(
-				{center.x + direction.x * inner, center.y + direction.y * inner},
-				{center.x + direction.x * outer, center.y + direction.y * outer},
-				1.5f + 2.5f * opacity, {1.0f, 0.48f + 0.4f * opacity, 0.12f, opacity});
+
+		constexpr int kSparkCount = 18;
+		constexpr float kGoldenAngle = 2.3999632f;
+		constexpr float kGravity = 14.0f;
+		for (int i = 0; i < kSparkCount; ++i) {
+			const int lifetime = kImpactFrames - 2 * (i % 5);
+			if (age >= lifetime) { continue; }
+
+			const float angle = kGoldenAngle * float(i) + 0.15f * float(impact.frame % 24);
+			const float vertical = 1.0f - 2.0f * (float(i) + 0.5f) / float(kSparkCount);
+			const float horizontal = std::sqrt(1.0f - vertical * vertical);
+			const float speed = 6.0f + 1.5f * float(i % 6);
+			const Vector3 velocity{
+				speed * horizontal * std::cos(angle),
+				speed * vertical + 2.0f,
+				speed * horizontal * std::sin(angle)
+			};
+			const auto sparkPosition = [&](float time) {
+				return Vector3{
+					impact.position.x + velocity.x * time,
+					impact.position.y + velocity.y * time - 0.5f * kGravity * time * time,
+					impact.position.z + velocity.z * time
+				};
+			};
+
+			const float tailTime = float(age) / 60.0f;
+			const float headTime = tailTime + 2.0f / 60.0f;
+			Vector2 tail{}, head{};
+			if (!ProjectToScreen(vp, sparkPosition(tailTime), tail) ||
+				!ProjectToScreen(vp, sparkPosition(headTime), head)) { continue; }
+
+			const float opacity = 1.0f - float(age) / float(lifetime);
+			gameUi_->Line(tail, head, 1.0f + 2.5f * opacity,
+				{1.0f, 0.27f + 0.65f * opacity, 0.08f + 0.42f * opacity, opacity});
 		}
 	}
+
 
 	if (!combatImpacts_.empty()) {
 		const int age = uiFrames_ - combatImpacts_.back().frame;
@@ -1198,7 +1269,10 @@ void GamePlayScene::UpdateProjectiles()
 			bullet->Update(*camera_);
 			if (bullet->IsActive() && std::any_of(sceneryColliders_.begin(), sceneryColliders_.end(),
 				[&bullet](const Collider& scenery) { return bullet->GetCollider().IsCollision(scenery); })) {
+				projectileEffects_.push_back({bullet->GetPosition(), uiFrames_, bullet->GetOwner(), true});
 				bullet->Deactivate();
+			} else if (bullet->IsActive() && uiFrames_ % 4 == 0) {
+				projectileEffects_.push_back({bullet->GetPosition(), uiFrames_, bullet->GetOwner(), false});
 			}
 		}
 	};
@@ -1226,6 +1300,7 @@ void GamePlayScene::CheckProjectileCollisions()
 			}
 
 			if (playerBullet->GetCollider().IsCollision(enemyBullet->GetCollider())) {
+				projectileEffects_.push_back({playerBullet->GetPosition(), uiFrames_, ProjectileOwner::Player, true});
 				playerBullet->Deactivate();
 				enemyBullet->Deactivate();
 				break;
@@ -1236,6 +1311,7 @@ void GamePlayScene::CheckProjectileCollisions()
 	for (auto& enemyBullet : enemyBullets_) {
 		if (enemyBullet->IsActive() &&
 			enemyBullet->GetCollider().IsCollision(player_->GetCollider())) {
+			projectileEffects_.push_back({enemyBullet->GetPosition(), uiFrames_, ProjectileOwner::Enemy, true});
 			enemyBullet->Deactivate();
 			mission_.Damage();
 		}

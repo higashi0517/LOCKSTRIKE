@@ -29,7 +29,7 @@ void HomingProjectile::Initialize(
 		ProjectileOwner::Player,
 		position,
 		initialVelocity,
-		{ 1.0f, 0.45f, 0.05f, 1.0f });
+		{ 0.15f, 0.95f, 0.5f, 1.0f });
 
 	SetSpriteAppearance({ 32.0f, 10.0f }, 0.0f);
 }

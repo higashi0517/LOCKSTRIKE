@@ -65,6 +65,15 @@ private:
 	Vector3 muzzleFlashPosition_{};
 	int muzzleFlashFrame_ = -kMuzzleFlashFrames;
 	std::vector<CombatImpact> combatImpacts_;
+	struct ProjectileEffect {
+		Vector3 position;
+		int frame;
+		ProjectileOwner owner;
+		bool burst;
+	};
+	static constexpr int kProjectileEffectFrames = 18;
+	std::vector<ProjectileEffect> projectileEffects_;
+	void DrawProjectileEffects();
 	int uiFrames_ = 0;
 	static constexpr int kCountdownFrames = 3 * 60;
 	static constexpr int kStartBannerFrames = 36;

@@ -28,7 +28,11 @@ void Projectile::Initialize(
 	sprite_ = std::make_unique<Sprite>();
 	sprite_->Initialize(spriteManager, textureFilePath);
 	sprite_->SetAnchorPoint({ 0.5f, 0.5f });
-	sprite_->SetColor(color);
+	sprite_->SetColor({ 0.65f + color.x * 0.35f, 0.65f + color.y * 0.35f, 0.65f + color.z * 0.35f, color.w });
+	glow_ = std::make_unique<Sprite>();
+	glow_->Initialize(spriteManager, textureFilePath);
+	glow_->SetAnchorPoint({ 0.5f, 0.5f });
+	glow_->SetColor({ color.x, color.y, color.z, 0.75f * color.w });
 	sprite_->SetSize({ 20.0f, 20.0f });
 	sprite_->Update();
 
@@ -83,15 +87,18 @@ void Projectile::Update(const Camera& camera)
 		return;
 	}
 
-	const float screenSize = std::clamp(140.0f / clipW, 8.0f, 30.0f);
+	const bool enemy = owner_ == ProjectileOwner::Enemy;
+	const float screenSize = std::clamp((enemy ? 240.0f : 175.0f) / clipW,
+		enemy ? 12.0f : 9.0f, enemy ? 34.0f : 28.0f);
 	sprite_->SetPosition(screenPosition);
-	sprite_->SetSize({ screenSize, screenSize });
-	sprite_->Update();
+	glow_->SetPosition(screenPosition);
+	SetSpriteAppearance({ screenSize, screenSize }, 0.0f);
 }
 
 void Projectile::Draw()
 {
 	if (isActive_ && isVisible_ && sprite_) {
+		glow_->Draw();
 		sprite_->Draw();
 	}
 }
@@ -101,6 +108,9 @@ void Projectile::SetSpriteAppearance(const Vector2& size, float rotation)
 	sprite_->SetRotation(rotation);
 	sprite_->SetSize(size);
 	sprite_->Update();
+	glow_->SetRotation(rotation);
+	glow_->SetSize({ size.x * 1.7f, size.y * 1.7f });
+	glow_->Update();
 }
 
 bool Projectile::WorldToScreen(

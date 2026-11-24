@@ -58,6 +58,7 @@ private:
 	) const;
 
 	std::unique_ptr<Sprite> sprite_;
+	std::unique_ptr<Sprite> glow_;
 	ProjectileOwner owner_ = ProjectileOwner::Player;
 	Vector3 position_{ 0.0f, 0.0f, 0.0f };
 	Vector3 velocity_{ 0.0f, 0.0f, 0.0f };
